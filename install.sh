@@ -82,32 +82,56 @@ def receive_data():
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
 EOF
-
-# 5. Script Generation: Bluetooth Tester (Arduino)
-cat << 'EOF' > "$ROOT_DIR/scripts/bt_test.py"
+# 5. Script Generation: Bluetooth Logger (Arduino)
+echo -e "\e[33m📝 Generating Bluetooth Logger Script...\e[0m"
+cat << 'EOF' > "$ROOT_DIR/scripts/bt_logger.py"
 import serial
 import time
+import os
+import csv
+from datetime import datetime
 
 # On Linux/Pi, Bluetooth serial is usually mapped to /dev/rfcomm0
 COM_PORT = '/dev/rfcomm0' 
 BAUD_RATE = 9600
+DATA_DIR = os.path.expanduser("~/energy_logger/data")
+
+def get_daily_filename():
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    return os.path.join(DATA_DIR, f"arduino_bt_data_{date_str}.csv")
 
 try:
     print(f"📡 Attempting to connect to {COM_PORT}...")
     ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
     time.sleep(2)
-    print(f"✅ Connected! Waiting for Arduino data...")
+    print(f"✅ Connected! Logging Arduino data to CSV...")
 
     while True:
         if ser.in_waiting > 0:
             line = ser.readline().decode('utf-8').rstrip()
-            print(f"📦 BT Data Received: {line}")
+            
+            # Ensure the line isn't empty before logging
+            if line:
+                log_file = get_daily_filename()
+                file_exists = os.path.isfile(log_file)
+                
+                with open(log_file, "a", newline="") as f:
+                    writer = csv.writer(f)
+                    
+                    # Write Header only if file is new
+                    if not file_exists:
+                        writer.writerow(["Timestamp", "Sensor_1", "Sensor_2", "Sensor_3"])
+                        
+                    # Append timestamp + comma-separated data payload
+                    writer.writerow([datetime.now().isoformat()] + line.split(","))
+                
+                print(f"📦 Logged to CSV: {line}")
             
 except serial.SerialException as e:
     print(f"❌ Connection Error: {e}")
     print("💡 Tip: On Linux, ensure you paired the HC-05 and ran: sudo rfcomm bind 0 <MAC_ADDRESS>")
 except KeyboardInterrupt:
-    print("\n🛑 Test Stopped by User")
+    print("\n🛑 Logging Stopped by User")
 finally:
     if 'ser' in locals() and ser.is_open:
         ser.close()
@@ -117,5 +141,5 @@ echo -e "\e[36m🏁 INSTALLATION COMPLETE!\e[0m"
 echo "------------------------------------------------"
 echo -e "\e[32m👉 To activate the hub environment run:  source ~/energy_logger/venv/bin/activate\e[0m"
 echo -e "\e[32m👉 To start the Wi-Fi Hub run:           python ~/energy_logger/scripts/http_receiver.py\e[0m"
-echo -e "\e[32m👉 To test the Bluetooth run:            python ~/energy_logger/scripts/bt_test.py\e[0m"
+echo -e "\e[32m👉 To start the Bluetooth Logger run:    python ~/energy_logger/scripts/bt_logger.py\e[0m"
 echo "------------------------------------------------"
